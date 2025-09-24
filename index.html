@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StockFlip Finance Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      body {
+        overscroll-behavior: none;
+      }
+      /* For 3D flip effect */
+      .card-inner {
+        transform-style: preserve-3d;
+        transition: transform 0.3s ease-out;
+      }
+      .card.flipped .card-inner {
+        transform: rotateY(180deg);
+      }
+      .card-front, .card-back {
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+      }
+      .card-front {
+        transform: rotateY(180deg);
+      }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://aistudiocdn.com/react@^19.1.1",
+        "react/": "https://aistudiocdn.com/react@^19.1.1/",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useCallback, useRef } from 'react';
+      import ReactDOM from 'react-dom/client';
+
+      // =================================================================
+      // Original file: types.ts
+      // =================================================================
+      const Level = {
+        EASY: 'EASY',
+        MEDIUM: 'MEDIUM',
+        HARD: 'HARD',
+      };
+
+      const GameMode = {
+        TRANSLATION: 'TRANSLATION',
+        DEFINITION: 'DEFINITION',
+      };
+
+      const GameState = {
+        LOBBY: 'LOBBY',
+        PLAYING: 'PLAYING',
+        FINISHED: 'FINISHED',
+      };
+
+
+      // =================================================================
+      // Original file: constants.ts
+      // =================================================================
+      const UI_TEXTS = {
+        start: "Başla",
+        level: "Seviye",
+        easy: "Kolay",
+        medium: "Orta",
+        hard: "Zor",
+        mode: "Mod",
+        translation: "Çeviri",
+        definition: "Tanım",
+        sound: "Ses",
+        soundOn: "Açık",
+        soundOff: "Kapalı",
+        playAgain: "Yeniden Oyna",
+        timer: "Süre",
+        moves: "Hamle",
+        score: "Puan",
+        bestScore: "En İyi Skor",
+        results: "Sonuç",
+        continue: "Devam",
+      };
+
+      const LEVEL_CONFIG = {
+        [Level.EASY]: { pairs: 4, gridClass: 'grid-cols-4', targetTime: 45 },
+        [Level.MEDIUM]: { pairs: 6, gridClass: 'grid-cols-4 sm:grid-cols-6', targetTime: 90 },
+        [Level.HARD]: { pairs: 8, gridClass: 'grid-cols-4 md:grid-cols-8', targetTime: 120 },
+      };
+
+      const DEFAULT_CARD_DATA = [
+        { id: 1, term: { tr: "Hisse Senedi", en: "Stock" }, definition: { tr: "Bir şirketteki ortaklık payını temsil eden menkul kıymet.", en: "A security that represents ownership in a corporation." } },
+        { id: 2, term: { tr: "Tahvil", en: "Bond" }, definition: { tr: "Devletin veya özel şirketlerin borçlanarak fon sağlamak amacıyla çıkardığı borç senedi.", en: "A debt security issued by governments or corporations to raise funds." } },
+        { id: 3, term: { tr: "Enflasyon", en: "Inflation" }, definition: { tr: "Fiyatlar genel düzeyinin sürekli ve hissedilir artışı.", en: "The rate at which the general level of prices for goods and services is rising." } },
+        { id: 4, term: { tr: "Portföy", en: "Portfolio" }, definition: { tr: "Bir yatırımcının sahip olduğu menkul kıymetlerin toplamı.", en: "A collection of financial investments like stocks, bonds, and cash." } },
+        { id: 5, term: { tr: "Volatilite", en: "Volatility" }, definition: { tr: "Finansal bir ürünün fiyatındaki dalgalanmaların ölçüsü.", en: "A measure of the fluctuation in the price of a financial instrument." } },
+        { id: 6, term: { tr: "Ayı Piyasası", en: "Bear Market" }, definition: { tr: "Fiyatların uzun bir süre düşüş trendinde olduğu piyasa.", en: "A market in which prices are falling for a prolonged period." } },
+        { id: 7, term: { tr: "Boğa Piyasası", en: "Bull Market" }, definition: { tr: "Fiyatların uzun bir süre yükseliş trendinde olduğu piyasa.", en: "A market in which prices are rising for a prolonged period." } },
+        { id: 8, term: { tr: "Temettü", en: "Dividend" }, definition: { tr: "Şirketlerin dönem kârından pay sahiplerine dağıttığı kısım.", en: "A distribution of a portion of a company's earnings to its shareholders." } },
+      ];
+
+      // =================================================================
+      // Original file: services/analytics.ts
+      // =================================================================
+      const trackEvent = (eventName, payload) => {
+        if (window.analytics && typeof window.analytics.track === 'function') {
+          try {
+            window.analytics.track(eventName, payload);
+          } catch (error) {
+            console.error("Analytics tracking failed:", error);
+          }
+        } else {
+          console.log(`[Analytics Fallback] Event: ${eventName}`, payload || '');
+        }
+      };
+      
+      // =================================================================
+      // Original file: components/icons/*.tsx
+      // =================================================================
+      const CheckIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      );
+
+      const SoundOffIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l-4-4m0 4l4-4" />
+        </svg>
+      );
+
+      const SoundOnIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#e84921]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+        </svg>
+      );
+      
+      const ReturnIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z" />
+        </svg>
+      );
+
+
+      // =================================================================
+      // Original file: hooks/useGameLogic.ts
+      // =================================================================
+      const STREAK_THRESHOLD = 3;
+      const STREAK_MULTIPLIER = 1.2;
+      const BASE_MATCH_SCORE = 100;
+      const MISMATCH_PENALTY = 5;
+      const TIME_BONUS_PER_SECOND = 2;
+
+      const useGameLogic = ({ onGameEnd }) => {
+        const [gameState, setGameState] = useState(GameState.LOBBY);
+        const [cards, setCards] = useState([]);
+        const [flippedCardIds, setFlippedCardIds] = useState([]);
+        const [moves, setMoves] = useState(0);
+        const [score, setScore] = useState(0);
+        const [timer, setTimer] = useState(0);
+        const [streak, setStreak] = useState(0);
+        const [level, setLevel] = useState(Level.EASY);
+        const [mode, setMode] = useState(GameMode.TRANSLATION);
+        const [soundEnabled, setSoundEnabled] = useState(true);
+        const [bestScore, setBestScore] = useState(0);
+        const [gameResult, setGameResult] = useState(null);
+
+        const timerRef = useRef(null);
+        const audioRef = useRef({});
+
+        const playSound = (type) => {
+          if (soundEnabled && audioRef.current[type]) {
+            audioRef.current[type]?.play().catch(e => console.error("Error playing sound:", e));
+          }
+        };
+        
+        const getBestScore = useCallback(() => {
+          const key = `bestScore_${level}_${mode}`;
+          return parseInt(localStorage.getItem(key) || '0', 10);
+        }, [level, mode]);
+
+        useEffect(() => {
+          setBestScore(getBestScore());
+        }, [level, mode, getBestScore]);
+        
+        const setAndStoreBestScore = (newScore) => {
+          const currentBest = getBestScore();
+          if (newScore > currentBest) {
+            const key = `bestScore_${level}_${mode}`;
+            localStorage.setItem(key, newScore.toString());
+            setBestScore(newScore);
+          }
+        };
+        
+        const stopTimer = () => {
+          if (timerRef.current) clearInterval(timerRef.current);
+        };
+        
+        const resetGame = () => {
+          stopTimer();
+          setGameState(GameState.LOBBY);
+          setCards([]);
+          setMoves(0);
+          setScore(0);
+          setTimer(0);
+          setStreak(0);
+          setFlippedCardIds([]);
+        };
+
+        const startGame = useCallback(() => {
+          resetGame();
+          const { pairs } = LEVEL_CONFIG[level];
+          const shuffledData = [...DEFAULT_CARD_DATA].sort(() => Math.random() - 0.5);
+          const dataSlice = shuffledData.slice(0, pairs);
+
+          const gameCards = dataSlice.flatMap((pair, index) => {
+            const card1Content = mode === GameMode.TRANSLATION ? pair.term.tr : pair.term.tr;
+            const card2Content = mode === GameMode.TRANSLATION ? pair.term.en : pair.definition.tr;
+            return [
+              { id: index * 2, pairId: pair.id, content: card1Content, isFlipped: false, isMatched: false },
+              { id: index * 2 + 1, pairId: pair.id, content: card2Content, isFlipped: false, isMatched: false }
+            ];
+          }).sort(() => Math.random() - 0.5);
+
+          setCards(gameCards);
+          setGameState(GameState.PLAYING);
+          timerRef.current = setInterval(() => setTimer(prev => prev + 1), 1000);
+          trackEvent('game_start', { level, mode });
+        }, [level, mode]);
+
+        const handleCardFlip = (cardId) => {
+          if (flippedCardIds.length >= 2) return;
+          const cardToFlip = cards.find(c => c.id === cardId);
+          if (!cardToFlip || cardToFlip.isFlipped) return;
+          const newCards = cards.map(c => c.id === cardId ? { ...c, isFlipped: true } : c);
+          setCards(newCards);
+          setFlippedCardIds(prev => [...prev, cardId]);
+          trackEvent('card_flip', { cardId });
+        };
+
+        const processMatch = useCallback((isMatch) => {
+          if (isMatch) {
+            const currentStreak = streak + 1;
+            const multiplier = currentStreak >= STREAK_THRESHOLD ? STREAK_MULTIPLIER : 1;
+            setScore(prev => prev + Math.round(BASE_MATCH_SCORE * multiplier));
+            setStreak(currentStreak);
+            setCards(prev => prev.map(c => flippedCardIds.includes(c.id) ? { ...c, isMatched: true } : c));
+            playSound('success');
+            trackEvent('match_success', { score, streak: currentStreak });
+          } else {
+            setScore(prev => Math.max(0, prev - MISMATCH_PENALTY));
+            setStreak(0);
+            setTimeout(() => {
+              setCards(prev => prev.map(c => flippedCardIds.includes(c.id) ? { ...c, isFlipped: false } : c));
+              playSound('fail');
+            }, 700);
+            trackEvent('match_fail', { score });
+          }
+          setFlippedCardIds([]);
+        }, [flippedCardIds, score, streak]);
+
+        useEffect(() => {
+          if (flippedCardIds.length === 2) {
+            setMoves(prev => prev + 1);
+            const [firstCard, secondCard] = cards.filter(c => flippedCardIds.includes(c.id));
+            processMatch(firstCard.pairId === secondCard.pairId);
+          }
+        }, [flippedCardIds, cards, processMatch]);
+
+        useEffect(() => {
+          if (cards.length > 0 && cards.every(c => c.isMatched)) {
+            stopTimer();
+            const targetTime = LEVEL_CONFIG[level].targetTime;
+            const timeBonus = Math.max(0, (targetTime - timer) * TIME_BONUS_PER_SECOND);
+            const finalScore = score + timeBonus;
+            const result = { score: finalScore, moves, time: timer, level };
+            setGameResult(result);
+            setAndStoreBestScore(finalScore);
+            setGameState(GameState.FINISHED);
+            onGameEnd(result);
+            trackEvent('game_end', result);
+          }
+        }, [cards, level, moves, timer, score, onGameEnd]);
+
+        const toggleSound = () => setSoundEnabled(prev => !prev);
+
+        return {
+          gameState, cards, moves, score, timer, bestScore, level, mode, soundEnabled, gameResult,
+          setLevel, setMode, toggleSound, startGame, handleCardFlip, resetGame,
+        };
+      };
+      
+      // =================================================================
+      // Original file: components/Card.tsx
+      // =================================================================
+      const Card = ({ card, onFlip, mode }) => {
+        const { content, isFlipped, isMatched } = card;
+
+        const handleKeyPress = (event) => {
+          if (event.key === 'Enter') onFlip();
+        };
+
+        const cardClasses = `card relative w-full aspect-square min-h-[44px] min-w-[44px] perspective-1000 ${isFlipped ? 'flipped' : ''}`;
+        
+        const contentFontSize = mode === GameMode.DEFINITION 
+          ? 'text-[9px] sm:text-xs md:text-sm' 
+          : 'text-sm sm:text-base md:text-lg';
+
+        return (
+          <button
+            className={cardClasses}
+            onClick={onFlip}
+            onKeyPress={handleKeyPress}
+            disabled={isFlipped}
+            aria-label={`Card with content ${isFlipped ? content : 'hidden'}`}
+            aria-pressed={isFlipped}
+          >
+            <div className="card-inner w-full h-full">
+              <div className="card-back absolute w-full h-full rounded-lg bg-[#4a64b4] hover:bg-[#5a74c4] flex items-center justify-center p-2 shadow-md focus:outline-none focus:ring-2 focus:ring-[#e84921] focus:ring-opacity-50">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[#e84921] opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className={`card-front absolute w-full h-full rounded-lg flex items-center justify-center text-center p-1 sm:p-2 transition-all duration-300 overflow-hidden ${isMatched ? 'bg-emerald-600 border-2 border-[#e84921]' : 'bg-slate-100'}`}>
+                <span className={`font-bold ${isMatched ? 'text-white' : 'text-gray-900'} ${contentFontSize} break-words`}>{content}</span>
+                {isMatched && (
+                  <div className="absolute top-1 right-1 text-[#e84921]">
+                    <CheckIcon />
+                  </div>
+                )}
+              </div>
+            </div>
+          </button>
+        );
+      };
+      
+      // =================================================================
+      // Original file: components/GameControls.tsx
+      // =================================================================
+      const ControlButton = ({ onClick, label, isActive, disabled }) => (
+        <button
+          onClick={onClick}
+          disabled={disabled}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors w-full sm:w-auto ${
+            isActive ? 'bg-[#e84921] text-white shadow' : 'bg-[#4a64b4] text-blue-100 hover:bg-[#5a74c4]'
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          {label}
+        </button>
+      );
+
+      const GameControls = ({ level, mode, soundEnabled, onLevelChange, onModeChange, onSoundToggle, disabled }) => {
+        return (
+          <div className="flex flex-col items-center gap-6 p-4 rounded-lg bg-black/20 w-full max-w-md">
+            <div className="w-full">
+              <label className="block text-center text-lg font-semibold text-blue-200 mb-2">{UI_TEXTS.level}</label>
+              <div className="flex flex-col sm:flex-row justify-center bg-black/20 p-1 rounded-lg shadow-inner w-full gap-1">
+                <ControlButton onClick={() => onLevelChange(Level.EASY)} label={UI_TEXTS.easy} isActive={level === Level.EASY} disabled={disabled} />
+                <ControlButton onClick={() => onLevelChange(Level.MEDIUM)} label={UI_TEXTS.medium} isActive={level === Level.MEDIUM} disabled={disabled} />
+                <ControlButton onClick={() => onLevelChange(Level.HARD)} label={UI_TEXTS.hard} isActive={level === Level.HARD} disabled={disabled} />
+              </div>
+            </div>
+            <div className="w-full">
+              <label className="block text-center text-lg font-semibold text-blue-200 mb-2">{UI_TEXTS.mode}</label>
+              <div className="flex flex-col sm:flex-row justify-center bg-black/20 p-1 rounded-lg shadow-inner w-full gap-1">
+                <ControlButton onClick={() => onModeChange(GameMode.TRANSLATION)} label={UI_TEXTS.translation} isActive={mode === GameMode.TRANSLATION} disabled={disabled} />
+                <ControlButton onClick={() => onModeChange(GameMode.DEFINITION)} label={UI_TEXTS.definition} isActive={mode === GameMode.DEFINITION} disabled={disabled} />
+              </div>
+            </div>
+            <div className="w-full flex justify-center items-center">
+              <label className="text-lg font-semibold text-blue-200 mr-4">{UI_TEXTS.sound}</label>
+              <button
+                onClick={onSoundToggle}
+                className="p-2 rounded-full bg-[#4a64b4] hover:bg-[#5a74c4] transition-colors"
+                aria-label={soundEnabled ? "Disable sound" : "Enable sound"}
+              >
+                {soundEnabled ? <SoundOnIcon /> : <SoundOffIcon />}
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      // =================================================================
+      // Original file: components/GameStats.tsx
+      // =================================================================
+      const StatItem = ({ label, value }) => (
+        <div className="text-center bg-black/20 p-2 rounded-lg flex-1 min-w-[70px]">
+          <div className="text-xs sm:text-sm text-blue-200 uppercase tracking-wider">{label}</div>
+          <div className="text-lg sm:text-xl font-bold text-[#e84921]">{value}</div>
+        </div>
+      );
+
+      const GameStats = ({ moves, score, timer, bestScore }) => {
+        const formatTime = (seconds) => {
+          const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+          const secs = (seconds % 60).toString().padStart(2, '0');
+          return `${mins}:${secs}`;
+        };
+
+        return (
+          <div className="flex justify-around sm:grid sm:grid-cols-4 gap-2 sm:gap-3 w-full">
+            <StatItem label={UI_TEXTS.timer} value={formatTime(timer)} />
+            <StatItem label={UI_TEXTS.moves} value={moves} />
+            <StatItem label={UI_TEXTS.score} value={score} />
+            <StatItem label={UI_TEXTS.bestScore} value={bestScore} />
+          </div>
+        );
+      };
+      
+      // =================================================================
+      // Original file: components/GameEndModal.tsx
+      // =================================================================
+      const GameEndModal = ({ isOpen, result, onPlayAgain }) => {
+        if (!isOpen || !result) return null;
+
+        const formatTime = (seconds) => {
+          const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+          const secs = (seconds % 60).toString().padStart(2, '0');
+          return `${mins}:${secs}`;
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div className="bg-[#2a3f7f] rounded-2xl shadow-xl p-6 sm:p-8 w-full max-w-md text-center border-2 border-[#e84921]">
+              <h2 className="text-3xl font-bold text-[#e84921] mb-4">{UI_TEXTS.results}</h2>
+              <div className="space-y-3 my-6">
+                <div className="flex justify-between items-center bg-[#4a64b4] p-3 rounded-lg"><span className="text-lg text-blue-100">{UI_TEXTS.score}</span><span className="text-2xl font-bold text-white">{result.score}</span></div>
+                <div className="flex justify-between items-center bg-[#4a64b4] p-3 rounded-lg"><span className="text-lg text-blue-100">{UI_TEXTS.moves}</span><span className="text-2xl font-bold text-white">{result.moves}</span></div>
+                <div className="flex justify-between items-center bg-[#4a64b4] p-3 rounded-lg"><span className="text-lg text-blue-100">{UI_TEXTS.timer}</span><span className="text-2xl font-bold text-white">{formatTime(result.time)}</span></div>
+              </div>
+              <button onClick={onPlayAgain} className="w-full bg-[#e84921] hover:bg-[#d4411c] text-white font-bold py-3 px-6 rounded-lg text-xl transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#e84921] focus:ring-opacity-50">
+                {UI_TEXTS.playAgain}
+              </button>
+            </div>
+          </div>
+        );
+      };
+      
+      // =================================================================
+      // Original file: components/StockFlipGame.tsx
+      // =================================================================
+      const StockFlipGame = ({ onGameEnd }) => {
+        const { gameState, cards, moves, score, timer, bestScore, level, mode, soundEnabled, gameResult, setLevel, setMode, toggleSound, startGame, handleCardFlip, resetGame } = useGameLogic({ onGameEnd });
+        const gridClass = LEVEL_CONFIG[level].gridClass;
+
+        return (
+          <div className="w-full h-screen sm:h-auto sm:max-w-4xl mx-auto bg-[#2a3f7f] sm:rounded-2xl shadow-2xl p-4 flex flex-col">
+            <header className="flex justify-between items-center gap-4 mb-4 sm:mb-6">
+              {gameState === GameState.PLAYING ? (
+                <button onClick={resetGame} className="p-2 rounded-full hover:bg-[#4a64b4] transition-colors" aria-label="Return to menu">
+                  <ReturnIcon />
+                </button>
+              ) : <div className="w-10 h-10"></div>}
+              <div className="hidden sm:block flex-grow">
+                <GameStats moves={moves} score={score} timer={timer} bestScore={bestScore} />
+              </div>
+              {/* Placeholder for mobile to balance the return button */}
+              {gameState === GameState.PLAYING && <div className="sm:hidden w-10 h-10" />}
+            </header>
+            
+            <main className="flex-grow flex flex-col items-center justify-center">
+              {gameState === GameState.LOBBY && (
+                <div className="text-center flex flex-col items-center justify-center h-full w-full sm:pt-0">
+                  <GameControls level={level} mode={mode} soundEnabled={soundEnabled} onLevelChange={setLevel} onModeChange={setMode} onSoundToggle={toggleSound} disabled={false} />
+                  <button onClick={startGame} className="mt-8 bg-[#e84921] hover:bg-[#d4411c] text-white font-bold py-3 px-10 rounded-lg text-xl transition-transform transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#e84921] focus:ring-opacity-50">
+                    {UI_TEXTS.start}
+                  </button>
+                </div>
+              )}
+
+              {gameState === GameState.PLAYING && (
+                 <>
+                    <div className="sm:hidden mb-4 w-full">
+                        <GameStats moves={moves} score={score} timer={timer} bestScore={bestScore} />
+                    </div>
+                    <div className={`grid ${gridClass} gap-2 sm:gap-4 w-full`}>
+                      {cards.map((card) => <Card key={card.id} card={card} onFlip={() => handleCardFlip(card.id)} mode={mode} />)}
+                    </div>
+                 </>
+              )}
+            </main>
+
+            <GameEndModal isOpen={gameState === GameState.FINISHED} result={gameResult} onPlayAgain={resetGame} />
+          </div>
+        );
+      };
+
+      // =================================================================
+      // Original file: App.tsx
+      // =================================================================
+      const App = () => {
+        const handleGameEnd = (result) => {
+          console.log("Game Over. Result:", result);
+          // Integration point: Send result to a server for leaderboard
+        };
+
+        return (
+          <div className="bg-[#344f9e] text-white min-h-screen font-sans flex items-center justify-center">
+            <StockFlipGame onGameEnd={handleGameEnd} />
+          </div>
+        );
+      };
+      
+      // =================================================================
+      // Original file: index.tsx
+      // =================================================================
+      const rootElement = document.getElementById('root');
+      if (!rootElement) {
+        throw new Error("Could not find root element to mount to");
+      }
+      const root = ReactDOM.createRoot(rootElement);
+      root.render(
+        <React.StrictMode>
+          <App />
+        </React.StrictMode>
+      );
+    </script>
+</body>
+</html>
